@@ -1,0 +1,30 @@
+Cam2VR/
+│
+├── camera/
+│      webcam.py
+│
+├── pose/
+│      detector.py
+│      head.py
+│      hands.py
+│      body.py
+│
+├── filters/
+│      kalman.py
+│      smoothing.py
+│      prediction.py
+│
+├── vr/
+│      coordinates.py
+│      calibration.py
+│      skeleton.py
+│
+├── steamvr/
+│      driver.cpp
+│      bridge.py
+│
+├── config/
+│
+├── ui/
+│
+└── main.py

@@ -1,0 +1,23 @@
+Webcam
+      │
+      ▼
+Captura de imagen
+      │
+      ▼
+Detección de cuerpo
+(cabeza + manos)
+      │
+      ▼
+Estimación 3D
+      │
+      ▼
+Filtros
+      │
+      ▼
+Sistema de coordenadas VR
+      │
+      ▼
+SteamVR Driver
+      │
+      ▼
+VRChat
