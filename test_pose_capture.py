@@ -16,7 +16,7 @@ MODEL_PATH = f"{ROOT}/cam2vr/models/pose_landmarker_full.task"
 
 CAMERA_INDEX = 0
 FORMAT_INDEX = 312
-EXPOSURE = -6
+EXPOSURE = -5
 
 WINDOW_NAME = "Cam2VR - MediaPipe Pose"
 

@@ -1,3 +1,3 @@
-Testing scripts
+This dir contain my own manual testing scripts
 
-Dont mind this dir
+This scripts are meant to fail

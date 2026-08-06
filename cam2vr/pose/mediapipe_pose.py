@@ -49,7 +49,7 @@ class MediaPipePose:
         """
         self.validate(frame_rgb)
 
-        self.timestamp = max(int(capture_timestamp * 1000), self.previous_timestamp + 1)
+        self.timestamp = max(int(capture_timestamp // 10_000), self.previous_timestamp + 1)
 
         self.previous_timestamp = self.timestamp
 
@@ -116,8 +116,8 @@ class MediaPipePose:
             x=float(point.x),
             y=float(point.y),
             z=float(point.z),
-            visibility=float(presence),
-            presence=float(visibility)
+            visibility=float(visibility),
+            presence=float(presence)
         )
 
     @staticmethod
