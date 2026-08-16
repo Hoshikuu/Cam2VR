@@ -23,7 +23,7 @@ class FullPose:
 
     Args:
         sequence (int): the frame number
-        capture_timestamp (float): timestamp of the frame
+        capture_timestamp_ns (float): timestamp of the frame
         inference_start_timestamp (float): inference start timestamp
         inference_end_timestamp (float): inference end timestamp
         points_2d (list[Point]): list of points in 2D
@@ -31,7 +31,7 @@ class FullPose:
         valid (bool): if the pose is valid
     """
     sequence: int
-    capture_timestamp: float
+    capture_timestamp_ns: float
     inference_start_timestamp: float
     inference_end_timestamp: float
     points_2d: list[Point] = field(default_factory=list)

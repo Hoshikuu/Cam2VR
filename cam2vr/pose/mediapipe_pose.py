@@ -34,24 +34,24 @@ class MediaPipePose:
         )
 
         self.landmarker = tasks.vision.PoseLandmarker.create_from_options(self.options)
-        self.previous_timestamp = -1
+        self.previous_timestamp_ms = -1
 
-    def process(self, frame_rgb: ndarray, sequence: int, capture_timestamp: float):
+    def process(self, frame_rgb: ndarray, sequence: int, capture_timestamp_ns: float):
         """Processes the given frame
 
         Args:
             frame_rgb (ndarray): the captured frame
             sequence (int): the frame number
-            capture_timestamp (float): timestamp of the captured frame
+            capture_timestamp_ns (float): timestamp of the captured frame
 
         Returns:
             FullPose: full pose of the poins of the body
         """
         self.validate(frame_rgb)
 
-        self.timestamp = max(int(capture_timestamp // 10_000), self.previous_timestamp + 1)
+        self.timestamp_ms = max(int(capture_timestamp_ns // 10_000), self.previous_timestamp_ms + 1)
 
-        self.previous_timestamp = self.timestamp
+        self.previous_timestamp_ms = self.timestamp_ms
 
         self.mp_image = Image(
             image_format=ImageFormat.SRGB,
@@ -62,7 +62,7 @@ class MediaPipePose:
 
         self.result = self.landmarker.detect_for_video(
             self.mp_image,
-            self.timestamp
+            self.timestamp_ms
         )
 
         self.inference_end = perf_counter()
@@ -70,7 +70,7 @@ class MediaPipePose:
         if not self.result.pose_landmarks:
             return FullPose(
                 sequence=sequence,
-                capture_timestamp=capture_timestamp,
+                capture_timestamp_ns=capture_timestamp_ns,
                 inference_start_timestamp=self.inference_start,
                 inference_end_timestamp=self.inference_end,
                 valid=False
@@ -87,7 +87,7 @@ class MediaPipePose:
 
         return FullPose(
             sequence=sequence,
-            capture_timestamp=capture_timestamp,
+            capture_timestamp_ns=capture_timestamp_ns,
             inference_start_timestamp=self.inference_start,
             inference_end_timestamp=self.inference_end,
             points_2d=self.points_2d,
