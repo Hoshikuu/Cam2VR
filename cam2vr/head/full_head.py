@@ -1,23 +1,26 @@
 from dataclasses import dataclass
 
+
 @dataclass(slots=True)
 class FullHead:
-    """Represents the detected position and orientation of the head.
+    """Represents the detected position and orientation of the head
 
     Args:
-        sequence: camera frame sequence number.
-        x: head position on X axis.
-        y: head position on Y axis.
-        z: head position on Z axis.
-        yaw: rotation left/right in degrees.
-        pitch: rotation up/down in degrees.
-        roll: side tilt in degrees.
-        confidence: tracking confidence approximation.
-        capture_timestamp_ns: media Foundation timestamp.
-        valid: whether a head was detected.
+        sequence (int): frame number
+        capture_timestamp_100ns (int): Media Foundation capture timestamp
+        inference_start_timestamp (float): inference start timestamp
+        inference_end_timestamp (float): inference end timestamp
+        x (float): head position on the x axis
+        y (float): head position on the y axis
+        z (float): head position on the z axis
+        yaw (float): rotation around the vertical axis
+        pitch (float): rotation around the lateral axis
+        roll (float): rotation around the longitudinal axis
+        confidence (float): tracking confidence
+        valid (bool): if the head is valid
     """
     sequence: int
-    capture_timestamp_ns: int
+    capture_timestamp_100ns: int
     inference_start_timestamp: float
     inference_end_timestamp: float
     x: float = 0.0
@@ -28,3 +31,7 @@ class FullHead:
     roll: float = 0.0
     confidence: float = 0.0
     valid: bool = False
+
+    @property
+    def inference_ms(self):
+        return (self.inference_end_timestamp - self.inference_start_timestamp) * 1000.0

@@ -1,311 +1,96 @@
 import cv2
-import numpy as np
 
 from mediapipe import tasks
+from numpy import asarray, float64, ndarray
 
 from cam2vr.head.full_head import FullHead
+from cam2vr.head.head_map import NOSE_TIP
 
 
-NOSE_LANDMARK_INDEX = 1
-
-
-def landmark_to_pixel(
-    landmark,
-    width: int,
-    height: int,
-) -> tuple[int, int]:
+def point_to_pixel(point, width: int, height: int):
+    """Converts normalized coordinates to image coordinates
     """
-    Converts a normalized MediaPipe landmark into pixels.
+    return int(point.x * width), int(point.y * height)
+
+
+def draw_face_landmarks(frame_rgb: ndarray, face_landmarks):
+    """Draws the facial points and contour connections
     """
-
-    x = int(
-        landmark.x * width
-    )
-
-    y = int(
-        landmark.y * height
-    )
-
-    return x, y
-
-
-def draw_face_landmarks(
-    frame_rgb: np.ndarray,
-    face_landmarks,
-) -> np.ndarray:
-    """
-    Draws facial contours and all detected landmarks.
-    """
-
     output = frame_rgb.copy()
 
     if not face_landmarks:
         return output
 
     height, width = output.shape[:2]
+    connections = tasks.vision.FaceLandmarksConnections.FACE_LANDMARKS_CONTOURS
 
-    # Official MediaPipe facial contour connections.
-    connections = (
-        tasks.vision
-        .FaceLandmarksConnections
-        .FACE_LANDMARKS_CONTOURS
-    )
-
-    # Draw connections first.
     for connection in connections:
-        if (
-            connection.start >= len(face_landmarks)
-            or connection.end >= len(face_landmarks)
-        ):
+        if connection.start >= len(face_landmarks) or connection.end >= len(face_landmarks):
             continue
 
-        start = face_landmarks[
-            connection.start
-        ]
+        start = point_to_pixel(face_landmarks[connection.start], width, height)
+        end = point_to_pixel(face_landmarks[connection.end], width, height)
+        cv2.line(output, start, end, (40, 220, 220), 1, cv2.LINE_AA)
 
-        end = face_landmarks[
-            connection.end
-        ]
+    for point in face_landmarks:
+        x, y = point_to_pixel(point, width, height)
 
-        start_pixel = landmark_to_pixel(
-            start,
-            width,
-            height,
-        )
-
-        end_pixel = landmark_to_pixel(
-            end,
-            width,
-            height,
-        )
-
-        cv2.line(
-            output,
-            start_pixel,
-            end_pixel,
-
-            # RGB cyan-ish.
-            (40, 220, 220),
-
-            1,
-            cv2.LINE_AA,
-        )
-
-    # Draw every detected point.
-    for landmark in face_landmarks:
-        x, y = landmark_to_pixel(
-            landmark,
-            width,
-            height,
-        )
-
-        if (
-            x < 0
-            or y < 0
-            or x >= width
-            or y >= height
-        ):
-            continue
-
-        cv2.circle(
-            output,
-            (x, y),
-            1,
-
-            # RGB green.
-            (80, 255, 100),
-
-            -1,
-            cv2.LINE_AA,
-        )
+        if 0 <= x < width and 0 <= y < height:
+            cv2.circle(output, (x, y), 1, (80, 255, 100), -1, cv2.LINE_AA)
 
     return output
 
 
 def draw_head_axes(
-    frame_rgb: np.ndarray,
+    frame_rgb: ndarray,
     face_landmarks,
-    transformation_matrix: np.ndarray,
-    axis_length: float = 80.0,
-) -> np.ndarray:
+    transformation_matrix,
+    axis_length: float = 80.0
+):
+    """Draws the local head axes from the nose
     """
-    Draws XYZ orientation axes starting at the nose.
-
-    Red   = X
-    Green = Y
-    Blue  = Z
-    """
-
     output = frame_rgb.copy()
 
-    if face_landmarks is None:
+    if not face_landmarks or transformation_matrix is None:
         return output
 
-    if transformation_matrix is None:
+    if len(face_landmarks) <= NOSE_TIP:
         return output
 
-    if len(face_landmarks) <= NOSE_LANDMARK_INDEX:
+    transformation_matrix = asarray(transformation_matrix, dtype=float64)
+
+    if transformation_matrix.shape != (4, 4):
         return output
 
     height, width = output.shape[:2]
+    origin = point_to_pixel(face_landmarks[NOSE_TIP], width, height)
+    rotation = transformation_matrix[:3, :3]
 
-    nose = face_landmarks[
-        NOSE_LANDMARK_INDEX
-    ]
-
-    origin_x, origin_y = landmark_to_pixel(
-        nose,
-        width,
-        height,
-    )
-
-    origin = (
-        origin_x,
-        origin_y,
-    )
-
-    rotation = np.asarray(
-        transformation_matrix[:3, :3],
-        dtype=np.float64,
-    )
-
-    # Unit vectors for local head coordinates.
-    x_axis_3d = np.array(
-        [1.0, 0.0, 0.0]
-    )
-
-    y_axis_3d = np.array(
-        [0.0, 1.0, 0.0]
-    )
-
-    z_axis_3d = np.array(
-        [0.0, 0.0, 1.0]
-    )
-
-    # Rotate them according to the detected head.
-    x_rotated = (
-        rotation @ x_axis_3d
-    )
-
-    y_rotated = (
-        rotation @ y_axis_3d
-    )
-
-    z_rotated = (
-        rotation @ z_axis_3d
-    )
-
-    def project_axis(
-        axis: np.ndarray,
-    ) -> tuple[int, int]:
-        """
-        Simple orthographic projection.
-
-        Image Y grows downwards, hence the minus sign.
-        """
-
-        x = int(
-            origin_x
-            + axis[0] * axis_length
+    def project_axis(axis):
+        return (
+            int(origin[0] + axis[0] * axis_length),
+            int(origin[1] - axis[1] * axis_length)
         )
 
-        y = int(
-            origin_y
-            - axis[1] * axis_length
-        )
+    x_endpoint = project_axis(rotation[:, 0])
+    y_endpoint = project_axis(rotation[:, 1])
+    z_endpoint = project_axis(rotation[:, 2])
 
-        return x, y
+    cv2.line(output, origin, x_endpoint, (255, 0, 0), 3, cv2.LINE_AA)
+    cv2.line(output, origin, y_endpoint, (0, 255, 0), 3, cv2.LINE_AA)
+    cv2.line(output, origin, z_endpoint, (0, 0, 255), 3, cv2.LINE_AA)
 
-    x_endpoint = project_axis(
-        x_rotated
-    )
-
-    y_endpoint = project_axis(
-        y_rotated
-    )
-
-    z_endpoint = project_axis(
-        z_rotated
-    )
-
-    # X axis - RED
-    cv2.line(
-        output,
-        origin,
-        x_endpoint,
-        (255, 0, 0),
-        3,
-        cv2.LINE_AA,
-    )
-
-    # Y axis - GREEN
-    cv2.line(
-        output,
-        origin,
-        y_endpoint,
-        (0, 255, 0),
-        3,
-        cv2.LINE_AA,
-    )
-
-    # Z axis - BLUE
-    cv2.line(
-        output,
-        origin,
-        z_endpoint,
-        (0, 0, 255),
-        3,
-        cv2.LINE_AA,
-    )
-
-    cv2.circle(
-        output,
-        origin,
-        5,
-        (255, 255, 255),
-        -1,
-        cv2.LINE_AA,
-    )
-
-    cv2.circle(
-        output,
-        x_endpoint,
-        4,
-        (255, 0, 0),
-        -1,
-        cv2.LINE_AA,
-    )
-
-    cv2.circle(
-        output,
-        y_endpoint,
-        4,
-        (0, 255, 0),
-        -1,
-        cv2.LINE_AA,
-    )
-
-    cv2.circle(
-        output,
-        z_endpoint,
-        4,
-        (0, 0, 255),
-        -1,
-        cv2.LINE_AA,
-    )
+    cv2.circle(output, origin, 5, (255, 255, 255), -1, cv2.LINE_AA)
+    cv2.circle(output, x_endpoint, 4, (255, 0, 0), -1, cv2.LINE_AA)
+    cv2.circle(output, y_endpoint, 4, (0, 255, 0), -1, cv2.LINE_AA)
+    cv2.circle(output, z_endpoint, 4, (0, 0, 255), -1, cv2.LINE_AA)
 
     return output
 
 
-def draw_head_info(
-    frame_rgb: np.ndarray,
-    head: FullHead,
-    landmark_count: int = 0,
-) -> np.ndarray:
+def draw_head_info(frame_rgb: ndarray, head: FullHead, landmark_count: int = 0):
+    """Draws head tracking information
     """
-    Draws head tracking information.
-    """
-
     output = frame_rgb.copy()
 
     if not head.valid:
@@ -317,112 +102,57 @@ def draw_head_info(
             0.8,
             (255, 60, 60),
             2,
-            cv2.LINE_AA,
+            cv2.LINE_AA
         )
-
         return output
 
     lines = [
         "Cam2VR Head Tracking",
         "",
+        f"Inference: {head.inference_ms:.2f} ms",
+        "",
         f"Position X: {head.x:8.2f}",
         f"Position Y: {head.y:8.2f}",
         f"Position Z: {head.z:8.2f}",
         "",
-        f"Yaw:   {head.yaw:8.2f} deg",
+        f"Yaw: {head.yaw:8.2f} deg",
         f"Pitch: {head.pitch:8.2f} deg",
-        f"Roll:  {head.roll:8.2f} deg",
+        f"Roll: {head.roll:8.2f} deg",
         "",
         f"Landmarks: {landmark_count}",
-        f"Sequence: {head.sequence}",
+        f"Sequence: {head.sequence}"
     ]
 
-    x = 15
-    y = 28
-
     line_height = 22
-
-    overlay = output.copy()
-
-    panel_height = (
-        15
-        + line_height * len(lines)
-    )
-
-    cv2.rectangle(
-        overlay,
-        (5, 5),
-        (315, panel_height),
-        (0, 0, 0),
-        -1,
-    )
-
-    cv2.addWeighted(
-        overlay,
-        0.60,
-        output,
-        0.40,
-        0,
-        output,
-    )
+    panel = output.copy()
+    cv2.rectangle(panel, (5, 5), (315, 15 + len(lines) * line_height), (0, 0, 0), -1)
+    cv2.addWeighted(panel, 0.60, output, 0.40, 0, output)
 
     for index, line in enumerate(lines):
         cv2.putText(
             output,
             line,
-            (
-                x,
-                y + index * line_height,
-            ),
+            (15, 28 + index * line_height),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.50,
             (255, 255, 255),
             1,
-            cv2.LINE_AA,
+            cv2.LINE_AA
         )
 
     return output
 
 
-def draw_head(
-    frame_rgb: np.ndarray,
-    head: FullHead,
-    face_landmarks=None,
-    transformation_matrix=None,
-) -> np.ndarray:
+def draw_head(frame_rgb: ndarray, head: FullHead, face_landmarks=None, transformation_matrix=None):
+    """Draws the complete head tracking overlay
     """
-    Complete head debugging visualization.
-    """
-
     output = frame_rgb.copy()
 
     if not head.valid:
-        return draw_head_info(
-            output,
-            head,
-        )
+        return draw_head_info(output, head)
 
-    output = draw_face_landmarks(
-        output,
-        face_landmarks,
-    )
+    output = draw_face_landmarks(output, face_landmarks)
+    output = draw_head_axes(output, face_landmarks, transformation_matrix)
+    landmark_count = len(face_landmarks) if face_landmarks else 0
 
-    output = draw_head_axes(
-        output,
-        face_landmarks,
-        transformation_matrix,
-    )
-
-    landmark_count = (
-        len(face_landmarks)
-        if face_landmarks
-        else 0
-    )
-
-    output = draw_head_info(
-        output,
-        head,
-        landmark_count,
-    )
-
-    return output
+    return draw_head_info(output, head, landmark_count)

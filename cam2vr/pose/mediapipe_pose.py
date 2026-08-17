@@ -1,8 +1,12 @@
-from time import perf_counter
 from os.path import isfile
-from numpy import ndarray, uint8, ascontiguousarray
+from time import perf_counter
+
 from mediapipe import Image, ImageFormat, tasks
+from numpy import ascontiguousarray, ndarray, uint8
+
 from .full_pose import FullPose, PosePoint
+from .pose_map import POSE_POINT_COUNT
+
 
 class MediaPipePose:
     """MediaPipe model to detect body points
@@ -11,17 +15,17 @@ class MediaPipePose:
         """Constructor
 
         Args:
-            model_path (str): the path of the vision model
+            model_path (str): path of the vision model
 
         Raises:
-            FileNotFoundError: if the vision model doesnt exists
+            FileNotFoundError: if the vision model does not exist
         """
-        self.model_path: str = model_path
+        self.model_path = model_path
 
         if not isfile(self.model_path):
-            raise FileNotFoundError(f"Model not found {self.model_path}")
+            raise FileNotFoundError(f"Model not found: {self.model_path}")
 
-        self.options = tasks.vision.PoseLandmarkerOptions(
+        options = tasks.vision.PoseLandmarkerOptions(
             base_options=tasks.BaseOptions(
                 model_asset_path=self.model_path
             ),
@@ -33,84 +37,83 @@ class MediaPipePose:
             output_segmentation_masks=False
         )
 
-        self.landmarker = tasks.vision.PoseLandmarker.create_from_options(self.options)
+        self.landmarker = tasks.vision.PoseLandmarker.create_from_options(options)
         self.previous_timestamp_ms = -1
 
-    def process(self, frame_rgb: ndarray, sequence: int, capture_timestamp_ns: float):
+    def process(self, frame_rgb: ndarray, sequence: int, capture_timestamp_100ns: int):
         """Processes the given frame
 
         Args:
-            frame_rgb (ndarray): the captured frame
-            sequence (int): the frame number
-            capture_timestamp_ns (float): timestamp of the captured frame
+            frame_rgb (ndarray): captured RGB frame
+            sequence (int): frame number
+            capture_timestamp_100ns (int): Media Foundation capture timestamp
 
         Returns:
-            FullPose: full pose of the poins of the body
+            FullPose: detected body pose
         """
         self.validate(frame_rgb)
 
-        self.timestamp_ms = max(int(capture_timestamp_ns // 10_000), self.previous_timestamp_ms + 1)
+        sequence = int(sequence)
+        capture_timestamp_100ns = int(capture_timestamp_100ns)
 
-        self.previous_timestamp_ms = self.timestamp_ms
+        timestamp_ms = max(
+            capture_timestamp_100ns // 10_000,
+            self.previous_timestamp_ms + 1
+        )
+        self.previous_timestamp_ms = timestamp_ms
 
-        self.mp_image = Image(
+        mp_image = Image(
             image_format=ImageFormat.SRGB,
             data=ascontiguousarray(frame_rgb)
         )
 
-        self.inference_start = perf_counter()
+        inference_start_timestamp = perf_counter()
+        result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        inference_end_timestamp = perf_counter()
 
-        self.result = self.landmarker.detect_for_video(
-            self.mp_image,
-            self.timestamp_ms
-        )
-
-        self.inference_end = perf_counter()
-
-        if not self.result.pose_landmarks:
+        if not result.pose_landmarks or not result.pose_world_landmarks:
             return FullPose(
                 sequence=sequence,
-                capture_timestamp_ns=capture_timestamp_ns,
-                inference_start_timestamp=self.inference_start,
-                inference_end_timestamp=self.inference_end,
+                capture_timestamp_100ns=capture_timestamp_100ns,
+                inference_start_timestamp=inference_start_timestamp,
+                inference_end_timestamp=inference_end_timestamp,
                 valid=False
             )
 
-        self.points_2d = []
-        for point in self.result.pose_landmarks[0]:
-            self.points_2d.append(self.convert_point(point))
+        points_2d = [self.convert_point(point) for point in result.pose_landmarks[0]]
+        points_3d = [self.convert_point(point) for point in result.pose_world_landmarks[0]]
 
-        self.points_3d = []
-        if self.result.pose_world_landmarks:
-            for point in self.result.pose_world_landmarks[0]:
-                self.points_3d.append(self.convert_point(point))
+        if len(points_2d) != POSE_POINT_COUNT or len(points_3d) != POSE_POINT_COUNT:
+            return FullPose(
+                sequence=sequence,
+                capture_timestamp_100ns=capture_timestamp_100ns,
+                inference_start_timestamp=inference_start_timestamp,
+                inference_end_timestamp=inference_end_timestamp,
+                valid=False
+            )
 
         return FullPose(
             sequence=sequence,
-            capture_timestamp_ns=capture_timestamp_ns,
-            inference_start_timestamp=self.inference_start,
-            inference_end_timestamp=self.inference_end,
-            points_2d=self.points_2d,
-            points_3d=self.points_3d,
+            capture_timestamp_100ns=capture_timestamp_100ns,
+            inference_start_timestamp=inference_start_timestamp,
+            inference_end_timestamp=inference_end_timestamp,
+            points_2d=points_2d,
+            points_3d=points_3d,
             valid=True
         )
 
     @staticmethod
     def convert_point(point):
-        """Converts the MediaPipe point to Cam2VR point
+        """Converts a MediaPipe point to a Cam2VR point
 
         Args:
-            point (?): point of mediapipe
+            point: MediaPipe pose point
 
         Returns:
-            PositionPoint: the point converted to Cam2VR point
+            PosePoint: converted point
         """
-        visibility = 0.0
-        presence = 0.0
-        if point.visibility is not None:
-            visibility = point.visibility
-        if point.presence is not None:
-            presence = point.presence
+        visibility = point.visibility if point.visibility is not None else 0.0
+        presence = point.presence if point.presence is not None else 0.0
 
         return PosePoint(
             x=float(point.x),
@@ -122,16 +125,7 @@ class MediaPipePose:
 
     @staticmethod
     def validate(frame_rgb: ndarray):
-        """Validates the frame to the standards
-
-        Args:
-            frame_rgb (np.ndarray): the frame motherfucker
-
-        Raises:
-            TypeError: type of array not right
-            TypeError: type of data not right
-            ValueError: dimensions of the array not right
-            ValueError: colors of the array not right
+        """Validates the given frame
         """
         if not isinstance(frame_rgb, ndarray):
             raise TypeError("frame_rgb must be np.ndarray")
@@ -146,7 +140,7 @@ class MediaPipePose:
             raise ValueError(f"frame_rgb must be (x, y, 3) not (x, y, {frame_rgb.shape[2]})")
 
     def close(self):
-        """Closing cleaning
+        """Closes the MediaPipe model
         """
         if self.landmarker is not None:
             self.landmarker.close()

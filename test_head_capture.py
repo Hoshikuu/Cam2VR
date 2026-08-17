@@ -11,12 +11,12 @@ if str(ROOT) not in path:
     path.insert(0, str(ROOT))
 
 
-from cam2vr.hands.mediapipe_hands import MediaPipeHands
+from cam2vr.head.mediapipe_head import MediaPipeHead
 from cam2vr.hskcamera import hskcamera
-from cam2vr.visualization.hand_overlay import draw_hands
+from cam2vr.visualization.head_overlay import draw_head
 
 
-MODEL_PATH = ROOT / "cam2vr" / "models" / "hand_landmarker.task"
+MODEL_PATH = ROOT / "cam2vr" / "models" / "face_landmarker.task"
 
 CAMERA_INDEX = 0
 FORMAT_INDEX = 312
@@ -24,7 +24,7 @@ EXPOSURE = -5
 FRAME_TIMEOUT_MS = 1000
 MAX_TIMEOUTS = 5
 
-WINDOW_NAME = "Cam2VR - Hand Tracking"
+WINDOW_NAME = "Cam2VR - Head Tracking"
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
         raise FileNotFoundError(f"No se encontro el modelo: {MODEL_PATH}")
 
     camera = hskcamera.Camera()
-    hands_backend = None
+    head_backend = None
     camera_opened = False
     camera_started = False
 
@@ -52,10 +52,10 @@ def main():
         if not camera_started:
             raise RuntimeError("No se pudo iniciar la captura")
 
-        hands_backend = MediaPipeHands(str(MODEL_PATH))
+        head_backend = MediaPipeHead(str(MODEL_PATH))
 
         print(f"Camara abierta: {camera.width}x{camera.height}")
-        print("Hand Tracking iniciado")
+        print("Head Tracking iniciado")
         print("Pulsa Q o ESC para cerrar")
 
         last_sequence = 0
@@ -81,16 +81,17 @@ def main():
             capture_timestamp_100ns = int(capture_timestamp_100ns)
             last_sequence = sequence
 
-            hands = hands_backend.process(
+            head = head_backend.process(
                 frame_rgb=frame_rgb,
                 sequence=sequence,
                 capture_timestamp_100ns=capture_timestamp_100ns
             )
 
-            debug_rgb = draw_hands(
+            debug_rgb = draw_head(
                 frame_rgb=frame_rgb,
-                hands=hands,
-                rotation_matrices=hands_backend.last_rotation_matrices
+                head=head,
+                face_landmarks=head_backend.last_face_landmarks,
+                transformation_matrix=head_backend.last_transformation_matrix
             )
 
             debug_bgr = cv2.cvtColor(debug_rgb, cv2.COLOR_RGB2BGR)
@@ -108,8 +109,8 @@ def main():
         print("\nCaptura interrumpida")
 
     finally:
-        if hands_backend is not None:
-            hands_backend.close()
+        if head_backend is not None:
+            head_backend.close()
 
         if camera_started:
             camera.stop()
