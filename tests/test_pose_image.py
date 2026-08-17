@@ -1,56 +1,56 @@
 from pathlib import Path
-import time
+from sys import path
 
 import cv2
 
-from cam2vr.pose.mediapipe_pose import MediaPipePoseBackend
+
+FILE_DIRECTORY = Path(__file__).resolve().parent
+ROOT = FILE_DIRECTORY.parent if FILE_DIRECTORY.name == "tests" else FILE_DIRECTORY
+
+if str(ROOT) not in path:
+    path.insert(0, str(ROOT))
 
 
-ROOT = Path(__file__).resolve().parent
-
-MODEL_PATH = ROOT / "models" / "pose_landmarker_full.task"
-IMAGE_PATH = ROOT / "test_person.jpg"
+from cam2vr.pose.mediapipe_pose import MediaPipePose
+from cam2vr.pose.pose_map import LEFT_SHOULDER, NOSE, RIGHT_SHOULDER
 
 
-image_bgr = cv2.imread(str(IMAGE_PATH))
+MODEL_PATH = ROOT / "cam2vr" / "models" / "pose_landmarker_full.task"
+IMAGE_PATH = FILE_DIRECTORY / "test_person.jpg"
 
-if image_bgr is None:
-    raise FileNotFoundError(f"No se pudo abrir: {IMAGE_PATH}")
 
-# OpenCV abre imágenes como BGR.
-# MediaPipe espera RGB.
-image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+def main():
+    if not MODEL_PATH.is_file():
+        raise FileNotFoundError(f"No se encontro el modelo: {MODEL_PATH}")
 
-backend = MediaPipePoseBackend(MODEL_PATH)
+    image_bgr = cv2.imread(str(IMAGE_PATH))
 
-try:
-    observation = backend.process(
-        frame_rgb=image_rgb,
-        sequence=0,
-        capture_timestamp=time.perf_counter(),
-    )
+    if image_bgr is None:
+        raise FileNotFoundError(f"No se pudo abrir la imagen: {IMAGE_PATH}")
 
-    print(f"Detección válida: {observation.valid}")
-    print(f"Inferencia: {observation.inference_ms:.2f} ms")
-    print(f"Landmarks 2D: {len(observation.landmarks_2d)}")
-    print(f"Landmarks 3D: {len(observation.landmarks_3d)}")
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    pose_backend = MediaPipePose(str(MODEL_PATH))
 
-    if observation.valid:
-        nose = observation.landmarks_2d[0]
-        left_shoulder = observation.landmarks_2d[11]
-        right_shoulder = observation.landmarks_2d[12]
+    try:
+        pose = pose_backend.process(
+            frame_rgb=image_rgb,
+            sequence=0,
+            capture_timestamp_100ns=0
+        )
 
-        print()
-        print("Nariz:")
-        print(nose)
+        print(f"Deteccion valida: {pose.valid}")
+        print(f"Inferencia: {pose.inference_ms:.2f} ms")
+        print(f"Puntos 2D: {len(pose.points_2d)}")
+        print(f"Puntos 3D: {len(pose.points_3d)}")
 
-        print()
-        print("Hombro izquierdo:")
-        print(left_shoulder)
+        if pose.valid:
+            print(f"Nariz: {pose.points_2d[NOSE]}")
+            print(f"Hombro izquierdo: {pose.points_2d[LEFT_SHOULDER]}")
+            print(f"Hombro derecho: {pose.points_2d[RIGHT_SHOULDER]}")
 
-        print()
-        print("Hombro derecho:")
-        print(right_shoulder)
+    finally:
+        pose_backend.close()
 
-finally:
-    backend.close()
+
+if __name__ == "__main__":
+    main()

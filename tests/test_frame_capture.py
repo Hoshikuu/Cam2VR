@@ -1,51 +1,79 @@
+from pathlib import Path
+from sys import path
+
+
+FILE_DIRECTORY = Path(__file__).resolve().parent
+ROOT = FILE_DIRECTORY.parent if FILE_DIRECTORY.name == "tests" else FILE_DIRECTORY
+
+if str(ROOT) not in path:
+    path.insert(0, str(ROOT))
+
+
 from cam2vr.hskcamera import hskcamera
 
-camera = hskcamera.Camera()
 
-try:
-    opened = camera.open(
-        camera_index=1,
-        format_index=312,
-        exposure=-6,
-        list_formats=False,
-    )
+CAMERA_INDEX = 0
+FORMAT_INDEX = 312
+EXPOSURE = -5
+FRAME_TIMEOUT_MS = 1000
+FRAME_COUNT = 20
 
-    if not opened:
-        raise RuntimeError("No se pudo abrir la cámara")
 
-    started = camera.start()
+def main():
+    camera = hskcamera.Camera()
+    camera_opened = False
+    camera_started = False
 
-    if not started:
-        raise RuntimeError("No se pudo iniciar la captura")
-
-    print("Cámara abierta:", camera.is_open)
-    print("Capturando:", camera.is_capturing)
-    print("Resolución:", camera.width, "x", camera.height)
-
-    last_sequence = 0
-
-    for index in range(20):
-        result = camera.wait_for_next_frame(
-            last_sequence=last_sequence,
-            timeout_ms=1000,
+    try:
+        camera_opened = camera.open(
+            camera_index=CAMERA_INDEX,
+            format_index=FORMAT_INDEX,
+            exposure=EXPOSURE,
+            list_formats=False
         )
 
-        if result is None:
-            print("Timeout esperando frame")
-            continue
+        if not camera_opened:
+            raise RuntimeError("No se pudo abrir la camara")
 
-        frame, sequence, timestamp = result
+        camera_started = camera.start()
 
-        last_sequence = sequence
+        if not camera_started:
+            raise RuntimeError("No se pudo iniciar la captura")
 
-        print(
-            f"Frame {index}:",
-            "shape =", frame.shape,
-            "dtype =", frame.dtype,
-            "sequence =", sequence,
-            "timestamp =", timestamp,
-        )
+        print(f"Camara abierta: {camera.width}x{camera.height}")
+        print(f"Capturando: {camera.is_capturing}")
 
-finally:
-    camera.stop()
-    camera.close()
+        last_sequence = 0
+
+        for index in range(FRAME_COUNT):
+            result = camera.wait_for_next_frame(
+                last_sequence=last_sequence,
+                timeout_ms=FRAME_TIMEOUT_MS
+            )
+
+            if result is None:
+                raise RuntimeError("Timeout esperando frame")
+
+            frame_rgb, sequence, capture_timestamp_100ns = result
+            sequence = int(sequence)
+            capture_timestamp_100ns = int(capture_timestamp_100ns)
+            last_sequence = sequence
+
+            print(
+                f"Frame {index + 1}: "
+                f"shape={frame_rgb.shape}, "
+                f"dtype={frame_rgb.dtype}, "
+                f"sequence={sequence}, "
+                f"timestamp_100ns={capture_timestamp_100ns}"
+            )
+
+    finally:
+        if camera_started:
+            camera.stop()
+
+        if camera_opened:
+            camera.close()
+
+
+if __name__ == "__main__":
+    main()

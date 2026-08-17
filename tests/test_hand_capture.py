@@ -1,6 +1,5 @@
 from pathlib import Path
 from sys import path
-from time import perf_counter
 
 import cv2
 
@@ -12,8 +11,12 @@ if str(ROOT) not in path:
     path.insert(0, str(ROOT))
 
 
+from cam2vr.hands.mediapipe_hands import MediaPipeHands
 from cam2vr.hskcamera import hskcamera
+from cam2vr.visualization.hand_overlay import draw_hands
 
+
+MODEL_PATH = ROOT / "cam2vr" / "models" / "hand_landmarker.task"
 
 CAMERA_INDEX = 0
 FORMAT_INDEX = 312
@@ -21,11 +24,15 @@ EXPOSURE = -5
 FRAME_TIMEOUT_MS = 1000
 MAX_TIMEOUTS = 5
 
-WINDOW_NAME = "Cam2VR - Camera"
+WINDOW_NAME = "Cam2VR - Hand Tracking"
 
 
 def main():
+    if not MODEL_PATH.is_file():
+        raise FileNotFoundError(f"No se encontro el modelo: {MODEL_PATH}")
+
     camera = hskcamera.Camera()
+    hands_backend = None
     camera_opened = False
     camera_started = False
 
@@ -45,16 +52,14 @@ def main():
         if not camera_started:
             raise RuntimeError("No se pudo iniciar la captura")
 
-        print(f"Camara abierta: {camera.width}x{camera.height}")
-        print("Pulsa Q o ESC para cerrar")
+        hands_backend = MediaPipeHands(str(MODEL_PATH))
 
-        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+        print(f"Camara abierta: {camera.width}x{camera.height}")
+        print("Hand Tracking iniciado")
+        print("Pulsa Q o ESC para cerrar")
 
         last_sequence = 0
         consecutive_timeouts = 0
-        fps = 0.0
-        frame_count = 0
-        fps_start = perf_counter()
 
         while True:
             result = camera.wait_for_next_frame(
@@ -71,32 +76,26 @@ def main():
                 continue
 
             consecutive_timeouts = 0
-            frame_rgb, sequence, _ = result
+            frame_rgb, sequence, capture_timestamp_100ns = result
             sequence = int(sequence)
+            capture_timestamp_100ns = int(capture_timestamp_100ns)
             last_sequence = sequence
 
-            frame_count += 1
-            elapsed = perf_counter() - fps_start
-
-            if elapsed >= 0.5:
-                fps = frame_count / elapsed
-                frame_count = 0
-                fps_start = perf_counter()
-
-            frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-
-            cv2.putText(
-                frame_bgr,
-                f"FPS: {fps:.1f} | Sequence: {sequence}",
-                (20, 35),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2,
-                cv2.LINE_AA
+            hands = hands_backend.process(
+                frame_rgb=frame_rgb,
+                sequence=sequence,
+                capture_timestamp_100ns=capture_timestamp_100ns
             )
 
-            cv2.imshow(WINDOW_NAME, frame_bgr)
+            debug_rgb = draw_hands(
+                frame_rgb=frame_rgb,
+                hands=hands,
+                rotation_matrices=hands_backend.last_rotation_matrices
+            )
+
+            debug_bgr = cv2.cvtColor(debug_rgb, cv2.COLOR_RGB2BGR)
+            cv2.imshow(WINDOW_NAME, debug_bgr)
+
             key = cv2.waitKey(1) & 0xFF
 
             if key in (ord("q"), 27):
@@ -109,6 +108,9 @@ def main():
         print("\nCaptura interrumpida")
 
     finally:
+        if hands_backend is not None:
+            hands_backend.close()
+
         if camera_started:
             camera.stop()
 
