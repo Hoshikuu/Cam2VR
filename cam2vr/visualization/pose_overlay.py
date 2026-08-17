@@ -1,7 +1,7 @@
 import cv2
 
 from numpy import ndarray
-from cam2vr.pose.full_pose import FullPose, Point
+from cam2vr.pose.full_pose import FullPose, PosePoint
 
 NOSE = 0
 LEFT_SHOULDER = 11
@@ -53,7 +53,7 @@ BODY_CONNECTIONS = [
     (RIGHT_HEEL, RIGHT_FOOT_INDEX),
 ]
 
-def point_pixel(point: Point, width: int, height: int):
+def point_pixel(point: PosePoint, width: int, height: int):
     """Converts cam2vr points to image coordinates
 
     Args:
@@ -68,7 +68,7 @@ def point_pixel(point: Point, width: int, height: int):
     y = int(point.y * height)
     return x, y
 
-def point_drawable(point: Point, min_visibility: float = 0.4):
+def point_drawable(point: PosePoint, min_visibility: float = 0.4):
     """Decides if 1 point needs to be drawn
 
     Args:

@@ -2,7 +2,7 @@ from time import perf_counter
 from os.path import isfile
 from numpy import ndarray, uint8, ascontiguousarray
 from mediapipe import Image, ImageFormat, tasks
-from .full_pose import FullPose, Point
+from .full_pose import FullPose, PosePoint
 
 class MediaPipePose:
     """MediaPipe model to detect body points
@@ -112,7 +112,7 @@ class MediaPipePose:
         if point.presence is not None:
             presence = point.presence
 
-        return Point(
+        return PosePoint(
             x=float(point.x),
             y=float(point.y),
             z=float(point.z),
